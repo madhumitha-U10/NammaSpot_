@@ -77,7 +77,7 @@ function Admin() {
             onSubmit={(e) => {
               e.preventDefault();
               const code = String(new FormData(e.currentTarget).get("code") ?? "");
-              if (code !== "namma2026") {
+              if (code !== "madhunamma@Tale") {
                 toast.error("Invalid access code");
                 return;
               }
@@ -93,7 +93,7 @@ function Admin() {
               <ShieldCheck className="size-4" /> Enter console
             </Button>
             <p className="text-xs text-muted-foreground">
-              Demo code: <code>namma2026</code>. Replace with real admin auth before launch.
+              Admin access is restricted to the NammaSpot team.
             </p>
           </form>
         </div>
