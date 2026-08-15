@@ -14,13 +14,33 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      seller_accounts: {
+        Row: {
+          created_at: string
+          nammaspot_id: string
+          seller_id: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          nammaspot_id: string
+          seller_id?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          nammaspot_id?: string
+          seller_id?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      nammaspot_id_available: { Args: { _id: string }; Returns: boolean }
     }
     Enums: {
       [_ in never]: never
