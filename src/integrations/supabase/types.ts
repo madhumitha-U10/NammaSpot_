@@ -18,18 +18,21 @@ export type Database = {
         Row: {
           created_at: string
           nammaspot_id: string
+          profile: Json | null
           seller_id: string | null
           user_id: string
         }
         Insert: {
           created_at?: string
           nammaspot_id: string
+          profile?: Json | null
           seller_id?: string | null
           user_id: string
         }
         Update: {
           created_at?: string
           nammaspot_id?: string
+          profile?: Json | null
           seller_id?: string | null
           user_id?: string
         }
