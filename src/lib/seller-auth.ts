@@ -45,12 +45,14 @@ export interface AuthResult {
   ok: boolean;
   error?: string;
   sellerId?: string | null;
+  profile?: unknown;
 }
 
 export async function signUpSeller(input: {
   nammaspotId: string;
   password: string;
   sellerId: string;
+  profile?: unknown;
 }): Promise<AuthResult> {
   const id = normalizeId(input.nammaspotId);
 
@@ -80,6 +82,7 @@ export async function signUpSeller(input: {
     user_id: data.session.user.id,
     nammaspot_id: id,
     seller_id: input.sellerId,
+    profile: (input.profile ?? null) as never,
   });
 
   if (insertError) {
@@ -111,11 +114,11 @@ export async function signInSeller(input: {
 
   const { data: account } = await supabase
     .from("seller_accounts")
-    .select("seller_id")
+    .select("seller_id, profile")
     .eq("user_id", data.session.user.id)
     .maybeSingle();
 
-  return { ok: true, sellerId: account?.seller_id ?? null };
+  return { ok: true, sellerId: account?.seller_id ?? null, profile: account?.profile ?? null };
 }
 
 export async function signOutSeller() {

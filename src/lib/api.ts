@@ -288,6 +288,12 @@ export function registerSeller(
   return seller;
 }
 
+/** Re-adds a seller profile to this browser's store (used after login on a new device). */
+export function restoreSellerProfile(seller: Seller) {
+  if (allSellers().some((s) => s.id === seller.id)) return;
+  mutate((o) => o.sellers.unshift(seller));
+}
+
 export function addProduct(input: Omit<Product, "id" | "views" | "active">): Product {
   const product: Product = { ...input, id: id("p_"), views: 0, active: true };
   const { imageUrl, ...rest } = product;

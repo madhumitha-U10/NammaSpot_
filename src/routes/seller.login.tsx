@@ -6,6 +6,7 @@ import { PageHeading, SiteShell } from "@/components/site/SiteShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { restoreSellerProfile, type Seller } from "@/lib/api";
 import { setSession } from "@/lib/session";
 import { signInSeller } from "@/lib/seller-auth";
 
@@ -54,6 +55,7 @@ function SellerLogin() {
       return;
     }
 
+    if (result.profile) restoreSellerProfile(result.profile as Seller);
     setSession(result.sellerId);
     toast.success("Vanakkam! Welcome back.");
     navigate({ to: "/seller/dashboard" });

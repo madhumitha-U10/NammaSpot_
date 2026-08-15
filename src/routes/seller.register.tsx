@@ -111,7 +111,12 @@ function RegisterSeller() {
 
     setBusy(true);
     const seller = registerSeller(profile);
-    const auth = await signUpSeller({ nammaspotId, password, sellerId: seller.id });
+    const auth = await signUpSeller({
+      nammaspotId,
+      password,
+      sellerId: seller.id,
+      profile: seller,
+    });
     setBusy(false);
 
     if (!auth.ok) {
