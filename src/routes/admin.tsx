@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Check, ShieldCheck, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+
 import { toast } from "sonner";
 
 import { PageHeading, SiteShell } from "@/components/site/SiteShell";
