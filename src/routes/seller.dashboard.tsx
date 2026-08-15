@@ -51,6 +51,7 @@ import {
   setProductImage,
 } from "@/lib/api";
 import { clearSession, getSession } from "@/lib/session";
+import { signOutSeller } from "@/lib/seller-auth";
 
 const SECTIONS = [
   { id: "overview", label: "Overview", icon: LayoutGrid },
@@ -473,7 +474,8 @@ function Dashboard() {
                   <Button
                     variant="outline"
                     className="rounded-full"
-                    onClick={() => {
+                    onClick={async () => {
+                      await signOutSeller();
                       clearSession();
                       toast.success("Signed out");
                       window.location.assign("/seller/login");

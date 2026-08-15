@@ -18,6 +18,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { categories, registerSeller } from "@/lib/api";
 import { useStoreData } from "@/hooks/use-store-data";
 import { setSession } from "@/lib/session";
+import {
+  signUpSeller,
+  validateNammaspotId,
+  validatePassword,
+} from "@/lib/seller-auth";
 
 export const Route = createFileRoute("/seller/register")({
   head: () => ({
@@ -39,6 +44,9 @@ export const Route = createFileRoute("/seller/register")({
 });
 
 const schema = z.object({
+  nammaspotId: z.string(),
+  password: z.string(),
+  confirmPassword: z.string(),
   businessName: z.string().trim().min(2, "Business name is required").max(80),
   ownerName: z.string().trim().min(2, "Owner name is required").max(80),
   categoryId: z.string().min(1, "Pick a category"),
@@ -56,12 +64,19 @@ function RegisterSeller() {
   const navigate = useNavigate();
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [categoryId, setCategoryId] = useState("");
+  const [busy, setBusy] = useState(false);
   const { data: cats } = useStoreData(categories);
 
-  const submit = (e: React.FormEvent<HTMLFormElement>) => {
+  const submit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
+    const nammaspotId = String(fd.get("nammaspotId") ?? "");
+    const password = String(fd.get("password") ?? "");
+    const confirmPassword = String(fd.get("confirmPassword") ?? "");
     const parsed = schema.safeParse({
+      nammaspotId,
+      password,
+      confirmPassword,
       businessName: fd.get("businessName"),
       ownerName: fd.get("ownerName"),
       categoryId,
@@ -75,14 +90,36 @@ function RegisterSeller() {
       priceFrom: fd.get("priceFrom"),
     });
 
+    const next: Record<string, string> = {};
     if (!parsed.success) {
-      const next: Record<string, string> = {};
       for (const issue of parsed.error.issues) next[String(issue.path[0])] = issue.message;
+    }
+    const idError = validateNammaspotId(nammaspotId);
+    if (idError) next["nammaspotId"] = idError;
+    const pwError = validatePassword(password);
+    if (pwError) next["password"] = pwError;
+    if (!next["password"] && password !== confirmPassword)
+      next["confirmPassword"] = "Passwords do not match";
+
+    if (Object.keys(next).length || !parsed.success) {
       setErrors(next);
       return;
     }
+    setErrors({});
 
-    const seller = registerSeller(parsed.data);
+    const { nammaspotId: _id, password: _pw, confirmPassword: _cpw, ...profile } = parsed.data;
+
+    setBusy(true);
+    const seller = registerSeller(profile);
+    const auth = await signUpSeller({ nammaspotId, password, sellerId: seller.id });
+    setBusy(false);
+
+    if (!auth.ok) {
+      setErrors({ nammaspotId: auth.error ?? "Could not create your account." });
+      toast.error(auth.error ?? "Could not create your account.");
+      return;
+    }
+
     setSession(seller.id);
     toast.success("Registered! Your profile is pending admin approval.");
     navigate({ to: "/seller/dashboard" });
@@ -154,6 +191,51 @@ function RegisterSeller() {
               {err("priceFrom")}
             </div>
           </div>
+          <div className="grid gap-4 border-t border-border pt-4 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <h2 className="text-sm font-semibold">Your NammaSpot login</h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Choose a unique NammaSpot ID and a password — you will use these to sign in.
+              </p>
+            </div>
+            <div>
+              <Label htmlFor="nammaspotId">NammaSpot ID</Label>
+              <Input
+                id="nammaspotId"
+                name="nammaspotId"
+                autoCapitalize="none"
+                spellCheck={false}
+                autoComplete="username"
+                placeholder="ammaveedubakes"
+                className="mt-1.5"
+                maxLength={24}
+              />
+              {err("nammaspotId")}
+            </div>
+            <div className="hidden sm:block" />
+            <div>
+              <Label htmlFor="password">Password</Label>
+              <Input
+                id="password"
+                name="password"
+                type="password"
+                autoComplete="new-password"
+                className="mt-1.5"
+              />
+              {err("password")}
+            </div>
+            <div>
+              <Label htmlFor="confirmPassword">Confirm password</Label>
+              <Input
+                id="confirmPassword"
+                name="confirmPassword"
+                type="password"
+                autoComplete="new-password"
+                className="mt-1.5"
+              />
+              {err("confirmPassword")}
+            </div>
+          </div>
           <div>
             <Label htmlFor="tagline">One-line tagline</Label>
             <Input id="tagline" name="tagline" className="mt-1.5" maxLength={120} />
@@ -164,7 +246,9 @@ function RegisterSeller() {
             <Textarea id="about" name="about" rows={4} className="mt-1.5" maxLength={1000} />
             {err("about")}
           </div>
-          <Button type="submit" className="w-full rounded-full">Create my profile</Button>
+          <Button type="submit" disabled={busy} className="w-full rounded-full">
+            {busy ? "Creating…" : "Create my profile"}
+          </Button>
           <p className="text-center text-xs text-muted-foreground">
             Already listed? <Link to="/seller/login" className="text-primary hover:underline">Seller login</Link>
           </p>
