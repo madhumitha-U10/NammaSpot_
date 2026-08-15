@@ -1,7 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Check, ShieldCheck, X } from "lucide-react";
-import { useEffect, useState } from "react";
-
+import { useState } from "react";
 import { toast } from "sonner";
 
 import { PageHeading, SiteShell } from "@/components/site/SiteShell";
@@ -22,16 +21,7 @@ import {
   setReviewApproval,
   setSellerStatus,
 } from "@/lib/api";
-import {
-  ADMIN_EMAIL,
-  isAdminSession,
-  isRecoveryLink,
-  sendAdminReset,
-  signInAdmin,
-  signOutAdmin,
-  updateAdminPassword,
-} from "@/lib/admin-auth";
-
+import { isAdmin, setAdmin } from "@/lib/session";
 
 const TABS = [
   { id: "approval", label: "Seller Approval" },
