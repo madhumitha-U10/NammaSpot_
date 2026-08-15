@@ -1,21 +1,8 @@
 /**
- * NammaSpot — Google Apps Script backend (free tier).
+ * NammaSpot Google Apps Script backend.
  *
- * The live website already talks to this API shape:
- *
- *   GET  ?action=sellers | products | categories | customers | enquiries | reviews
- *        -> { success: true, data: [ ...rows ] }
- *
- *   POST { action: "addSeller" | "addProduct" | "addCustomer" | "addEnquiry" | "addReview",
- *          data: { ...columnName: value } }
- *        -> { success: true }
- *
- * Reads already work on your deployment. Paste the doPost part below into the
- * same Apps Script project and re-deploy (Deploy > Manage deployments > Edit >
- * New version) to switch on writes for enquiries, sellers and products.
- *
- * Sheet tabs (row 1 = headers): Sellers, Products, Categories, Customers,
- * Enquiries, Reviews.
+ * GET  ?action=sellers|products|categories|customers|enquiries|reviews
+ * POST { action, data } for create/update operations.
  */
 
 const SHEET_ID = "PUT_YOUR_SHEET_ID_HERE";
@@ -35,12 +22,15 @@ const WRITE_ACTIONS = {
   addCustomer: "Customers",
   addEnquiry: "Enquiries",
   addReview: "Reviews",
+  updateSeller: "Sellers",
+  updateProduct: "Products",
+  updateCustomer: "Customers",
+  updateEnquiry: "Enquiries",
+  updateReview: "Reviews",
 };
 
 function json_(obj) {
-  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(
-    ContentService.MimeType.JSON,
-  );
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
 
 function sheet_(name) {
@@ -51,18 +41,17 @@ function rows_(name) {
   const sh = sheet_(name);
   if (!sh) throw new Error("Missing sheet tab: " + name);
   const values = sh.getDataRange().getValues();
+  if (!values.length) return [];
   const headers = values.shift();
-  return values
-    .filter(function (r) {
-      return String(r[0]).length > 0;
-    })
-    .map(function (r) {
-      const obj = {};
-      headers.forEach(function (h, i) {
-        if (String(h).length) obj[String(h)] = r[i];
-      });
-      return obj;
+  return values.filter(function (r) {
+    return r.some(function (v) { return String(v).trim().length > 0; });
+  }).map(function (r) {
+    const obj = {};
+    headers.forEach(function (h, i) {
+      if (String(h).length) obj[String(h)] = r[i];
     });
+    return obj;
+  });
 }
 
 function doGet(e) {
@@ -76,22 +65,65 @@ function doGet(e) {
   }
 }
 
+function headerMap_(sh) {
+  const values = sh.getDataRange().getValues();
+  if (!values.length) throw new Error("Sheet has no header row");
+  const map = {};
+  values[0].forEach(function (h, i) {
+    if (String(h).trim()) map[String(h).trim().toLowerCase()] = i;
+  });
+  return { headers: values[0], values: values, map: map };
+}
+
+function findRowById_(values, map, id) {
+  const idKeys = ["sellerid", "productid", "customerid", "enquiryid", "reviewid", "id"];
+  for (let i = 1; i < values.length; i++) {
+    for (let k = 0; k < idKeys.length; k++) {
+      const idx = map[idKeys[k]];
+      if (idx !== undefined && String(values[i][idx]) === String(id)) return i + 1;
+    }
+  }
+  return -1;
+}
+
+function appendRow_(sh, data) {
+  const meta = headerMap_(sh);
+  const row = meta.headers.map(function (h) {
+    const key = String(h);
+    return data[key] !== undefined ? data[key] : "";
+  });
+  sh.appendRow(row);
+}
+
+function updateRow_(sh, data) {
+  const id = data.sellerId || data.productId || data.customerId || data.enquiryId || data.reviewId || data.id;
+  if (!id) throw new Error("Update requires an ID");
+  const meta = headerMap_(sh);
+  const rowNumber = findRowById_(meta.values, meta.map, id);
+  if (rowNumber < 2) throw new Error("Record not found: " + id);
+
+  const current = sh.getRange(rowNumber, 1, 1, meta.headers.length).getValues()[0];
+  meta.headers.forEach(function (h, i) {
+    const key = String(h);
+    if (Object.prototype.hasOwnProperty.call(data, key)) current[i] = data[key];
+  });
+  sh.getRange(rowNumber, 1, 1, meta.headers.length).setValues([current]);
+}
+
 function doPost(e) {
   try {
-    const body = JSON.parse(e.postData.contents);
-    const tab = WRITE_ACTIONS[body.action];
+    const body = JSON.parse(e.postData.contents || "{}");
+    const action = body.action;
+    const tab = WRITE_ACTIONS[action];
     if (!tab) return json_({ success: false, error: "Invalid action" });
 
     const sh = sheet_(tab);
     if (!sh) return json_({ success: false, error: "Missing sheet tab: " + tab });
-
-    const headers = sh.getDataRange().getValues()[0];
     const data = body.data || {};
-    const row = headers.map(function (h) {
-      const key = String(h);
-      return data[key] !== undefined ? data[key] : "";
-    });
-    sh.appendRow(row);
+
+    if (action.indexOf("update") === 0) updateRow_(sh, data);
+    else appendRow_(sh, data);
+
     return json_({ success: true });
   } catch (err) {
     return json_({ success: false, error: String(err) });
