@@ -22,7 +22,16 @@ import {
   setReviewApproval,
   setSellerStatus,
 } from "@/lib/api";
-import { isAdmin, setAdmin } from "@/lib/session";
+import {
+  ADMIN_EMAIL,
+  isAdminSession,
+  isRecoveryLink,
+  sendAdminReset,
+  signInAdmin,
+  signOutAdmin,
+  updateAdminPassword,
+} from "@/lib/admin-auth";
+
 
 const TABS = [
   { id: "approval", label: "Seller Approval" },
