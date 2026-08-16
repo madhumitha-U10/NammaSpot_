@@ -1,12 +1,12 @@
 import type { Review } from "@/data/seed";
-import { ensureData, remoteSnapshot } from "@/lib/api";
+import { allReviews, ensureData } from "@/lib/api";
 import { appendSheetRow } from "@/lib/sheets.functions";
 
 const id = () => `r_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 
 export async function createReview(input: Omit<Review, "id" | "approved" | "createdAt">): Promise<Review> {
   await ensureData(true);
-  const duplicate = remoteSnapshot().reviews.some(
+  const duplicate = allReviews().some(
     (review) =>
       review.sellerId === input.sellerId &&
       review.customerName.trim().toLowerCase() === input.customerName.trim().toLowerCase() &&
