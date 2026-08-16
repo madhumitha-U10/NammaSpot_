@@ -20,10 +20,8 @@ jobs:
           node-version: 22
       - name: Install dependencies
         run: npm install
-      - name: Fix known lint compatibility issue
-        run: python3 -c "from pathlib import Path; p=Path('src/lib/remote.ts'); s=p.read_text(); s=s.replace(r'[^0-9.\-]', r'[^0-9.-]'); p.write_text(s)"
-      - name: Auto-format workspace for verification
-        run: npx eslint . --fix
+      - name: Format check
+        run: npx prettier --check .
       - name: Lint
         run: npm run lint
       - name: Production build
