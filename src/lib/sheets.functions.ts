@@ -8,6 +8,14 @@ export type { SheetCell, SheetRow, SheetTable } from "@/lib/sheets-shared";
 const rowSchema = z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()]));
 const tableSchema = z.enum(SHEET_TABLES);
 const legacyActionSchema = z.enum(["addSeller", "addProduct", "addCustomer", "addEnquiry", "addReview"]);
+const ID_KEYS: Record<(typeof SHEET_TABLES)[number], string> = {
+  sellers: "sellerId",
+  products: "productId",
+  categories: "categoryId",
+  customers: "customerId",
+  enquiries: "enquiryId",
+  reviews: "reviewId",
+};
 
 export const fetchSheetBundle = createServerFn({ method: "GET" })
   .inputValidator((data: unknown) => z.object({ tables: z.array(tableSchema).min(1).max(6) }).parse(data))
@@ -36,16 +44,13 @@ export const appendSheetRow = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => z.object({ action: legacyActionSchema, row: rowSchema }).parse(data))
   .handler(async ({ data }) => postToSheets({ action: data.action, data: data.row }));
 
-export const updateSheetRow = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown) => z.object({ table: tableSchema, id: z.string().min(1), row: rowSchema }).parse(data))
-  .handler(async ({ data }) => {
-    return postToSheets({ action: "update", table: data.table, data: { ...data.row, [`${data.table.slice(0, -1)}Id`]: data.id } });
-  });
-
 export const createSheetRow = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => z.object({ table: tableSchema, row: rowSchema }).parse(data))
   .handler(async ({ data }) => postToSheets({ action: "create", table: data.table, data: data.row }));
 
-export const deleteSheetRow = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown) => z.object({ table: tableSchema, id: z.string().min(1) }).parse(data))
-  .handler(async ({ data }) => postToSheets({ action: "delete", table: data.table, data: { id: data.id } }));
+export const updateSheetRow = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) => z.object({ table: tableSchema, id: z.string().min(1), row: rowSchema }).parse(data))
+  .handler(async ({ data }) => {
+    const idKey = ID_KEYS[data.table];
+    return postToSheets({ action: "update", table: data.table, data: { ...data.row, [idKey]: data.id } });
+  });
