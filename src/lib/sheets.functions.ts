@@ -1,60 +1,51 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-
 import { SHEET_TABLES, SHEETS_API_BASE_FALLBACK, type SheetRow } from "@/lib/sheets-shared";
 
 export type { SheetCell, SheetRow, SheetTable } from "@/lib/sheets-shared";
 
-/**
- * Server-side proxy to the NammaSpot Google Apps Script Web App.
- * Keeps the browser free of CORS/redirect issues.
- *
- * Reads (GET):  ?action=sellers|products|categories|customers|enquiries|reviews
- * Writes (POST): { action: "addEnquiry" | "addSeller" | "addProduct" | ..., data }
- *                — enabled once doPost exists in the Apps Script (backend/Code.gs).
- */
+const WRITE_ACTIONS = ["addSeller", "addProduct", "addCustomer", "addEnquiry", "addReview", "updateSeller", "updateProduct", "updateCustomer", "updateEnquiry", "updateReview"] as const;
 
-/**
- * Fetches several tabs in ONE round-trip. Apps Script executes requests from a
- * single user serially, so parallel client calls queue up and time out — this
- * walks the tables sequentially on the server instead.
- */
+async function callBackend(body: Record<string, unknown>): Promise<{ ok: boolean; data?: unknown; error?: string }> {
+  const base = process.env["SHEETS_API_BASE"] ?? SHEETS_API_BASE_FALLBACK;
+  try {
+    const res = await fetch(base, {
+      method: "POST",
+      redirect: "follow",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(body),
+    });
+    const text = await res.text();
+    if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
+    const parsed = JSON.parse(text) as { success?: boolean; data?: unknown; error?: string };
+    return parsed.success ? { ok: true, data: parsed.data } : { ok: false, error: parsed.error ?? "Backend rejected request" };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}
+
 export const fetchSheetBundle = createServerFn({ method: "GET" })
-  .inputValidator((data: unknown) =>
-    z.object({ tables: z.array(z.enum(SHEET_TABLES)).min(1).max(6) }).parse(data),
-  )
-  .handler(async ({ data }): Promise<{ rows: Record<string, SheetRow[]>; error?: string | undefined }> => {
+  .inputValidator((data: unknown) => z.object({ tables: z.array(z.enum(SHEET_TABLES)).min(1).max(6) }).parse(data))
+  .handler(async ({ data }): Promise<{ rows: Record<string, SheetRow[]>; error?: string }> => {
     const { readTables } = await import("@/lib/sheets-cache.server");
     return readTables(data.tables);
   });
 
 export const appendSheetRow = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown) =>
-    z
-      .object({
-        action: z.enum(["addSeller", "addProduct", "addCustomer", "addEnquiry", "addReview"]),
-        row: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])),
-      })
-      .parse(data),
-  )
-  .handler(async ({ data }): Promise<{ ok: boolean; error?: string | undefined }> => {
-    const base = process.env["SHEETS_API_BASE"] ?? SHEETS_API_BASE_FALLBACK;
-    try {
-      const res = await fetch(base, {
-        method: "POST",
-        redirect: "follow",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({ action: data.action, data: data.row }),
-      });
-      const text = await res.text();
-      if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
-      try {
-        const parsed = JSON.parse(text) as { success?: boolean; error?: string };
-        return parsed.success ? { ok: true } : { ok: false, error: parsed.error ?? "Write rejected" };
-      } catch {
-        return { ok: false, error: "Backend has no doPost handler yet" };
-      }
-    } catch (err) {
-      return { ok: false, error: String(err) };
-    }
-  });
+  .inputValidator((data: unknown) => z.object({
+    action: z.enum(WRITE_ACTIONS),
+    row: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])),
+  }).parse(data))
+  .handler(async ({ data }) => callBackend({ action: data.action, data: data.row }));
+
+export const updateSheetRow = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) => z.object({
+    action: z.enum(["updateSeller", "updateProduct", "updateCustomer", "updateEnquiry", "updateReview"]),
+    row: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])),
+  }).parse(data))
+  .handler(async ({ data }) => callBackend({ action: data.action, data: data.row }));
+
+/** Server-side admin authentication. The password lives only in Apps Script Script Properties. */
+export const authenticateAdmin = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) => z.object({ password: z.string().min(1).max(200) }).parse(data))
+  .handler(async ({ data }) => callBackend({ action: "adminLogin", data: { password: data.password } }));
