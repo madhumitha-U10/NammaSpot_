@@ -1,0 +1,28 @@
+name: NammaSpot Prelaunch Check
+
+on:
+  push:
+    branches:
+      - agent/launch-readiness-fix-2026-08-16
+      - prelaunch-hardening-clean
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-and-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm install
+      - name: Lint
+        run: npm run lint
+      - name: Production build
+        run: npm run build
