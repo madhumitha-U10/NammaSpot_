@@ -1,13 +1,3 @@
-/**
- * NammaSpot data access layer (the only place the app talks to "the backend").
- *
- * Reads: live Google Sheets data through the Apps Script Web App
- * (src/lib/sheets.functions.ts -> src/lib/remote.ts).
- * Writes: applied instantly to a localStorage overlay so the UI stays snappy,
- * and mirrored to the sheet best-effort via `appendSheetRow` (which starts
- * working the moment doPost exists in the Apps Script — see backend/Code.gs).
- */
-
 import {
   STORIES,
   type Category,
@@ -20,24 +10,12 @@ import {
   type Story,
 } from "@/data/seed";
 import { loadRemote, remoteSnapshot } from "@/lib/remote";
-import { appendSheetRow } from "@/lib/sheets.functions";
+import { appendSheetRow, updateSheetRow } from "@/lib/sheets.functions";
 
-export type {
-  Category,
-  Customer,
-  Enquiry,
-  Product,
-  Review,
-  Seller,
-  SellerStatus,
-  Story,
-};
+export type { Category, Customer, Enquiry, Product, Review, Seller, SellerStatus, Story };
 
-/** Loads Sellers/Products/Categories (and the prepared Customers/Enquiries/
- * Reviews tables) from the Google Sheets backend. Safe to call repeatedly. */
 export const ensureData = (force = false) => loadRemote(force);
 export const dataError = () => remoteSnapshot().error;
-
 const KEY = "nammaspot.store.v1";
 
 interface Overlay {
@@ -48,311 +26,129 @@ interface Overlay {
   customers: Customer[];
   statusOverrides: Record<string, SellerStatus>;
   reviewApprovals: Record<string, boolean>;
-  /** productId -> uploaded catalogue photo (data URL). */
   productImages: Record<string, string>;
-  /** customerId -> uploaded profile picture (data URL). */
-  customerAvatars: Record<string, string>;
 }
-
-const emptyOverlay: Overlay = {
-  sellers: [],
-  products: [],
-  enquiries: [],
-  reviews: [],
-  customers: [],
-  statusOverrides: {},
-  reviewApprovals: {},
-  productImages: {},
-  customerAvatars: {},
-};
-
+const emptyOverlay: Overlay = { sellers: [], products: [], enquiries: [], reviews: [], customers: [], statusOverrides: {}, reviewApprovals: {}, productImages: {} };
 function readOverlay(): Overlay {
   if (typeof window === "undefined") return emptyOverlay;
-  try {
-    const raw = window.localStorage.getItem(KEY);
-    return raw ? { ...emptyOverlay, ...(JSON.parse(raw) as Overlay) } : emptyOverlay;
-  } catch {
-    return emptyOverlay;
-  }
+  try { return { ...emptyOverlay, ...(JSON.parse(window.localStorage.getItem(KEY) || "{}") as Overlay) }; } catch { return emptyOverlay; }
+}
+function writeOverlay(next: Overlay) { if (typeof window !== "undefined") window.localStorage.setItem(KEY, JSON.stringify(next)); }
+function mutate(fn: (o: Overlay) => void) { const o = readOverlay(); fn(o); writeOverlay(o); }
+const id = (prefix: string) => `${prefix}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+
+function reportWrite(promise: Promise<{ ok: boolean; error?: string }>) {
+  void promise.then((r) => { if (!r.ok) console.error("NammaSpot backend write failed:", r.error); });
+}
+function add(action: "addSeller" | "addProduct" | "addCustomer" | "addEnquiry" | "addReview", row: Record<string, string | number | boolean | null>) {
+  reportWrite(appendSheetRow({ data: { action, row } }));
+}
+function update(action: "updateSeller" | "updateProduct" | "updateCustomer" | "updateEnquiry" | "updateReview", row: Record<string, string | number | boolean | null>) {
+  reportWrite(updateSheetRow({ data: { action, row } }));
 }
 
-function writeOverlay(next: Overlay) {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(KEY, JSON.stringify(next));
+function mergeById<T extends { id: string }>(remote: T[], local: T[]): T[] {
+  const map = new Map<string, T>();
+  remote.forEach((x) => map.set(x.id, x));
+  local.forEach((x) => map.set(x.id, { ...map.get(x.id), ...x } as T));
+  return [...map.values()];
 }
-
-function mutate(fn: (o: Overlay) => void) {
-  const o = readOverlay();
-  fn(o);
-  writeOverlay(o);
-}
-
-const id = (prefix: string) => `${prefix}${Date.now().toString(36)}`;
-
-/** Mirror a write to Google Sheets. Never blocks or breaks the UI. */
-function mirror(
-  action: "addSeller" | "addProduct" | "addCustomer" | "addEnquiry" | "addReview",
-  row: Record<string, string | number | boolean | null>,
-) {
-  void appendSheetRow({ data: { action, row } }).catch(() => undefined);
-}
-
-/* ---------------------------------- reads --------------------------------- */
 
 export function allSellers(): Seller[] {
   const o = readOverlay();
-  return [...remoteSnapshot().sellers, ...o.sellers].map((s) => ({
-    ...s,
-    status: o.statusOverrides[s.id] ?? s.status,
-  }));
+  return mergeById(remoteSnapshot().sellers, o.sellers).map((s) => ({ ...s, status: o.statusOverrides[s.id] ?? s.status }));
 }
-
 export function allProducts(): Product[] {
   const o = readOverlay();
-  return [...remoteSnapshot().products, ...o.products].map((p) => ({
-    ...p,
-    imageUrl: o.productImages[p.id] ?? p.imageUrl,
-  }));
+  return mergeById(remoteSnapshot().products, o.products).map((p) => ({ ...p, imageUrl: o.productImages[p.id] ?? p.imageUrl }));
 }
-
-export function allEnquiries(): Enquiry[] {
-  return [...readOverlay().enquiries, ...remoteSnapshot().enquiries];
-}
-
-export function allReviews(): Review[] {
-  const o = readOverlay();
-  return [...remoteSnapshot().reviews, ...o.reviews].map((r) => ({
-    ...r,
-    approved: o.reviewApprovals[r.id] ?? r.approved,
-  }));
-}
-
-export function allCustomers(): Customer[] {
-  const o = readOverlay();
-  return [...remoteSnapshot().customers, ...o.customers].map((c) => ({
-    ...c,
-    avatarUrl: o.customerAvatars[c.id] ?? c.avatarUrl,
-  }));
-}
-
+export function allEnquiries(): Enquiry[] { return mergeById(remoteSnapshot().enquiries, readOverlay().enquiries); }
+export function allReviews(): Review[] { const o = readOverlay(); return mergeById(remoteSnapshot().reviews, o.reviews).map((r) => ({ ...r, approved: o.reviewApprovals[r.id] ?? r.approved })); }
+export function allCustomers(): Customer[] { return mergeById(remoteSnapshot().customers, readOverlay().customers); }
 export const categories = (): Category[] => remoteSnapshot().categories;
-
-/** Stories are editorial content (no sheet tab yet) — attached to live sellers. */
-export function stories(): Story[] {
-  const sellers = approvedSellers();
-  if (!sellers.length) return [];
-  return STORIES.map((st, i) => ({ ...st, sellerId: sellers[i % sellers.length]!.id }));
-}
-
+export function stories(): Story[] { const sellers = approvedSellers(); return sellers.length ? STORIES.map((st, i) => ({ ...st, sellerId: sellers[i % sellers.length]!.id })) : []; }
 export const approvedSellers = () => allSellers().filter((s) => s.status === "approved");
-
 export const sellerBySlug = (slug: string) => allSellers().find((s) => s.slug === slug);
 export const sellerById = (sid: string) => allSellers().find((s) => s.id === sid);
 export const categoryById = (cid: string) => categories().find((c) => c.id === cid);
 export const categoryBySlug = (slug: string) => categories().find((c) => c.slug === slug);
-export const productsBySeller = (sid: string) =>
-  allProducts().filter((p) => p.sellerId === sid && p.active);
-export const reviewsBySeller = (sid: string) =>
-  allReviews().filter((r) => r.sellerId === sid && r.approved);
-export const enquiriesBySeller = (sid: string) =>
-  allEnquiries().filter((e) => e.sellerId === sid);
+export const productsBySeller = (sid: string) => allProducts().filter((p) => p.sellerId === sid && p.active);
+export const reviewsBySeller = (sid: string) => allReviews().filter((r) => r.sellerId === sid && r.approved);
+export const enquiriesBySeller = (sid: string) => allEnquiries().filter((e) => e.sellerId === sid);
 export const storiesBySeller = (sid: string) => stories().filter((s) => s.sellerId === sid);
 
-const BASE_AREAS = [
-  "Mylapore", "Adyar", "Besant Nagar", "T Nagar", "Anna Nagar", "Velachery",
-  "Kodambakkam", "Villivakkam", "Tambaram", "Coimbatore", "Madurai",
-];
-
-/** Areas from live seller data, merged with the known Chennai/TN list. */
-export function areas(): string[] {
-  const live = allSellers().flatMap((s) => [s.area, s.city]).filter(Boolean);
-  return Array.from(new Set([...live, ...BASE_AREAS]));
-}
-
+const BASE_AREAS = ["Mylapore", "Adyar", "Besant Nagar", "T Nagar", "Anna Nagar", "Velachery", "Kodambakkam", "Villivakkam", "Tambaram", "Coimbatore", "Madurai"];
+export function areas(): string[] { return Array.from(new Set([...allSellers().flatMap((s) => [s.area, s.city]).filter(Boolean), ...BASE_AREAS])); }
 export const AREAS = BASE_AREAS;
-
-export interface SearchFilters {
-  q?: string | undefined;
-  category?: string | undefined;
-  area?: string | undefined;
-  minRating?: number | undefined;
-  maxPrice?: number | undefined;
-  sort?: "featured" | "rating" | "price-low" | "newest" | undefined;
-}
-
+export interface SearchFilters { q?: string; category?: string; area?: string; minRating?: number; maxPrice?: number; sort?: "featured" | "rating" | "price-low" | "newest"; }
 export function searchSellers(f: SearchFilters): Seller[] {
   const q = (f.q ?? "").trim().toLowerCase();
-  const products = allProducts();
-
   let list = approvedSellers().filter((s) => {
     if (f.category && categoryById(s.categoryId)?.slug !== f.category) return false;
     if (f.area && s.area !== f.area && s.city !== f.area) return false;
     if (f.minRating && s.rating < f.minRating) return false;
     if (f.maxPrice && s.priceFrom > f.maxPrice) return false;
     if (!q) return true;
-    const hay = [
-      s.businessName, s.ownerName, s.tagline, s.about, s.area, s.city,
-      s.instagram, s.tags.join(" "), categoryById(s.categoryId)?.name ?? "",
-      products.filter((p) => p.sellerId === s.id).map((p) => p.name).join(" "),
-    ].join(" ").toLowerCase();
-    return hay.includes(q);
+    return [s.businessName, s.ownerName, s.tagline, s.about, s.area, s.city, s.instagram, s.tags.join(" "), categoryById(s.categoryId)?.name ?? "", ...allProducts().filter((p) => p.sellerId === s.id).map((p) => p.name)].join(" ").toLowerCase().includes(q);
   });
-
-  switch (f.sort) {
-    case "rating":
-      list = list.sort((a, b) => b.rating - a.rating);
-      break;
-    case "price-low":
-      list = list.sort((a, b) => a.priceFrom - b.priceFrom);
-      break;
-    case "newest":
-      list = list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-      break;
-    default:
-      list = list.sort(
-        (a, b) => Number(b.featured) - Number(a.featured) || b.rating - a.rating,
-      );
-  }
+  if (f.sort === "rating") list.sort((a, b) => b.rating - a.rating);
+  else if (f.sort === "price-low") list.sort((a, b) => a.priceFrom - b.priceFrom);
+  else if (f.sort === "newest") list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  else list.sort((a, b) => Number(b.featured) - Number(a.featured) || b.rating - a.rating);
   return list;
 }
 
-/* --------------------------------- writes --------------------------------- */
-
 export function createEnquiry(input: Omit<Enquiry, "id" | "status" | "createdAt">): Enquiry {
-  const enquiry: Enquiry = {
-    ...input,
-    id: id("e_"),
-    status: "new",
-    createdAt: new Date().toISOString().slice(0, 10),
-  };
-  mutate((o) => {
-    o.enquiries.unshift(enquiry);
-    if (!allCustomers().some((c) => c.phone === input.phone)) {
-      o.customers.unshift({
-        id: id("cu_"),
-        name: input.customerName,
-        phone: input.phone,
-        area: "—",
-        createdAt: enquiry.createdAt,
-      });
-    }
-  });
-  mirror("addEnquiry", {
-    enquiryId: enquiry.id,
-    sellerId: enquiry.sellerId,
-    productId: enquiry.productId ?? "",
-    customerName: enquiry.customerName,
-    phone: enquiry.phone,
-    eventDate: enquiry.eventDate,
-    message: enquiry.message,
-    status: enquiry.status,
-    createdAt: enquiry.createdAt,
-  });
+  const enquiry: Enquiry = { ...input, id: id("e_"), status: "new", createdAt: new Date().toISOString().slice(0, 10) };
+  const existingCustomer = allCustomers().find((c) => c.phone.replace(/\D/g, "") === input.phone.replace(/\D/g, ""));
+  const customer = existingCustomer ?? { id: id("cu_"), name: input.customerName, phone: input.phone, area: "—", createdAt: enquiry.createdAt };
+  mutate((o) => { o.enquiries.unshift(enquiry); if (!existingCustomer) o.customers.unshift(customer); });
+  if (!existingCustomer) add("addCustomer", { customerId: customer.id, name: customer.name, phone: customer.phone, area: customer.area, createdAt: customer.createdAt });
+  add("addEnquiry", { enquiryId: enquiry.id, sellerId: enquiry.sellerId, productId: enquiry.productId ?? "", customerName: enquiry.customerName, phone: enquiry.phone, eventDate: enquiry.eventDate, message: enquiry.message, status: enquiry.status, createdAt: enquiry.createdAt });
   return enquiry;
 }
 
-export function registerSeller(
-  input: Pick<Seller, "businessName" | "ownerName" | "categoryId" | "area" | "city" | "instagram" | "whatsapp" | "email" | "tagline" | "about"> & { priceFrom: number },
-): Seller {
-  const seller: Seller = {
-    ...input,
-    id: id("s_"),
-    slug: input.businessName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""),
-    rating: 0,
-    reviewCount: 0,
-    featured: false,
-    status: "pending",
-    createdAt: new Date().toISOString().slice(0, 10),
-    deliversAcrossCity: true,
-    tags: [],
-  };
+export function registerSeller(input: Pick<Seller, "businessName" | "ownerName" | "categoryId" | "area" | "city" | "instagram" | "whatsapp" | "email" | "tagline" | "about"> & { priceFrom: number }): Seller {
+  const seller: Seller = { ...input, id: id("s_"), slug: input.businessName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""), rating: 0, reviewCount: 0, featured: false, status: "pending", createdAt: new Date().toISOString().slice(0, 10), deliversAcrossCity: true, tags: [] };
   mutate((o) => o.sellers.unshift(seller));
-  mirror("addSeller", {
-    sellerId: seller.id,
-    name: seller.businessName,
-    ownerName: seller.ownerName,
-    category: categoryById(seller.categoryId)?.name ?? "",
-    description: seller.about,
-    tagline: seller.tagline,
-    phone: seller.whatsapp,
-    whatsapp: seller.whatsapp,
-    instagram: `@${seller.instagram}`,
-    email: seller.email,
-    location: seller.area,
-    city: seller.city,
-    priceFrom: seller.priceFrom,
-    status: seller.status,
-    createdAt: seller.createdAt,
-    imageUrl: "",
-  });
+  add("addSeller", { sellerId: seller.id, name: seller.businessName, ownerName: seller.ownerName, category: categoryById(seller.categoryId)?.name ?? "", description: seller.about, tagline: seller.tagline, phone: seller.whatsapp, whatsapp: seller.whatsapp, instagram: `@${seller.instagram}`, email: seller.email, location: seller.area, city: seller.city, priceFrom: seller.priceFrom, status: seller.status, createdAt: seller.createdAt, imageUrl: seller.imageUrl ?? "" });
   return seller;
 }
 
-/** Re-adds a seller profile to this browser's store (used after login on a new device). */
-export function restoreSellerProfile(seller: Seller) {
-  if (allSellers().some((s) => s.id === seller.id)) return;
-  mutate((o) => o.sellers.unshift(seller));
-}
+export function restoreSellerProfile(seller: Seller) { if (!allSellers().some((s) => s.id === seller.id)) mutate((o) => o.sellers.unshift(seller)); }
 
 export function addProduct(input: Omit<Product, "id" | "views" | "active">): Product {
   const product: Product = { ...input, id: id("p_"), views: 0, active: true };
-  const { imageUrl, ...rest } = product;
-  mutate((o) => {
-    o.products.unshift(rest as Product);
-    if (imageUrl) o.productImages[product.id] = imageUrl;
-  });
-  mirror("addProduct", {
-    productId: product.id,
-    sellerId: product.sellerId,
-    name: product.name,
-    description: product.description,
-    price: product.price,
-    type: product.type,
-    unit: product.unit,
-    category: categoryById(sellerById(product.sellerId)?.categoryId ?? "")?.name ?? "",
-    // Only mirror hosted URLs to the sheet; uploaded photos stay in the local overlay.
-    imageUrl: imageUrl && /^https?:/i.test(imageUrl) ? imageUrl : "",
-  });
+  mutate((o) => { o.products.unshift(product); if (product.imageUrl) o.productImages[product.id] = product.imageUrl; });
+  add("addProduct", { productId: product.id, sellerId: product.sellerId, name: product.name, description: product.description, price: product.price, type: product.type, unit: product.unit, category: categoryById(sellerById(product.sellerId)?.categoryId ?? "")?.name ?? "", imageUrl: product.imageUrl ?? "" });
   return product;
 }
 
 export function setSellerStatus(sellerId: string, status: SellerStatus) {
-  mutate((o) => {
-    o.statusOverrides[sellerId] = status;
-  });
+  const seller = sellerById(sellerId); if (!seller) return;
+  mutate((o) => { o.statusOverrides[sellerId] = status; });
+  update("updateSeller", { sellerId, status });
 }
 
 export function setReviewApproval(reviewId: string, approved: boolean) {
-  mutate((o) => {
-    o.reviewApprovals[reviewId] = approved;
-  });
+  mutate((o) => { o.reviewApprovals[reviewId] = approved; });
+  update("updateReview", { reviewId, approved });
 }
 
-/** Attach / change a catalogue photo for an existing product. */
-export function setProductImage(productId: string, dataUrl: string) {
-  mutate((o) => {
-    o.productImages[productId] = dataUrl;
-  });
+export function setSellerImage(sellerId: string, imageUrl: string) {
+  const seller = sellerById(sellerId); if (!seller) return;
+  const next = { ...seller, imageUrl };
+  mutate((o) => { const i = o.sellers.findIndex((s) => s.id === sellerId); if (i >= 0) o.sellers[i] = next; else o.sellers.unshift(next); });
+  update("updateSeller", { sellerId, imageUrl });
 }
 
+export function setProductImage(productId: string, imageUrl: string) {
+  mutate((o) => { o.productImages[productId] = imageUrl; });
+  update("updateProduct", { productId, imageUrl });
+}
 export function removeProductImage(productId: string) {
-  mutate((o) => {
-    delete o.productImages[productId];
-  });
+  mutate((o) => { delete o.productImages[productId]; });
+  update("updateProduct", { productId, imageUrl: "" });
 }
 
-/** Attach / change a customer profile picture (optional). */
-export function setCustomerAvatar(customerId: string, dataUrl: string) {
-  mutate((o) => {
-    o.customerAvatars[customerId] = dataUrl;
-  });
-}
-
-export function removeCustomerAvatar(customerId: string) {
-  mutate((o) => {
-    delete o.customerAvatars[customerId];
-  });
-}
-
-export const inr = (n: number) =>
-  `₹${n.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+export const inr = (n: number) => `₹${n.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
