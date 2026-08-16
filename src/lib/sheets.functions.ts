@@ -40,6 +40,20 @@ async function postToSheets(payload: Record<string, unknown>) {
   return parsed;
 }
 
+export const authenticateAdmin = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) => z.object({ password: z.string().min(1).max(200) }).parse(data))
+  .handler(async ({ data }) => {
+    const result = await postToSheets({ action: "authenticateAdmin", password: data.password });
+    return result.data as { token: string; expiresAt: number };
+  });
+
+export const verifyAdmin = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) => z.object({ token: z.string().min(1) }).parse(data))
+  .handler(async ({ data }) => {
+    const result = await postToSheets({ action: "verifyAdmin", token: data.token });
+    return Boolean((result.data as { valid?: boolean } | null)?.valid);
+  });
+
 export const appendSheetRow = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => z.object({ action: legacyActionSchema, row: rowSchema }).parse(data))
   .handler(async ({ data }) => postToSheets({ action: data.action, data: data.row }));
