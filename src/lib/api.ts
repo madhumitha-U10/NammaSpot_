@@ -104,10 +104,16 @@ function mirror(
 
 export function allSellers(): Seller[] {
   const o = readOverlay();
-  return [...remoteSnapshot().sellers, ...o.sellers].map((s) => ({
-    ...s,
-    status: o.statusOverrides[s.id] ?? s.status,
-  }));
+  const byId = new Map<string, Seller>();
+  for (const s of [...remoteSnapshot().sellers, ...o.sellers]) {
+    // Later entries (local overlay) win, so a record never appears twice.
+    byId.set(s.id, {
+      ...s,
+      status: o.statusOverrides[s.id] ?? s.status,
+      imageUrl: o.sellerImages[s.id] ?? s.imageUrl,
+    });
+  }
+  return [...byId.values()];
 }
 
 export function allProducts(): Product[] {
