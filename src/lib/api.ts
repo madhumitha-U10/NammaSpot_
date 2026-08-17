@@ -291,10 +291,14 @@ export function createEnquiry(input: Omit<Enquiry, "id" | "status" | "createdAt"
 }
 
 export function registerSeller(
-  input: Pick<Seller, "businessName" | "ownerName" | "categoryId" | "area" | "city" | "instagram" | "whatsapp" | "email" | "tagline" | "about"> & { priceFrom: number },
+  input: Pick<Seller, "businessName" | "ownerName" | "categoryId" | "area" | "city" | "instagram" | "whatsapp" | "email" | "tagline" | "about"> & {
+    priceFrom: number;
+    imageUrl?: string | undefined;
+  },
 ): Seller {
+  const { imageUrl, ...rest } = input;
   const seller: Seller = {
-    ...input,
+    ...rest,
     id: id("s_"),
     slug: input.businessName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""),
     rating: 0,
@@ -305,7 +309,10 @@ export function registerSeller(
     deliversAcrossCity: true,
     tags: [],
   };
-  mutate((o) => o.sellers.unshift(seller));
+  mutate((o) => {
+    o.sellers.unshift(seller);
+    if (imageUrl) o.sellerImages[seller.id] = imageUrl;
+  });
   mirror("addSeller", {
     sellerId: seller.id,
     name: seller.businessName,
@@ -322,9 +329,10 @@ export function registerSeller(
     priceFrom: seller.priceFrom,
     status: seller.status,
     createdAt: seller.createdAt,
-    imageUrl: "",
+    // Only hosted URLs go to the sheet; uploaded photos stay in the local overlay.
+    imageUrl: imageUrl && /^https?:/i.test(imageUrl) ? imageUrl : "",
   });
-  return seller;
+  return { ...seller, imageUrl };
 }
 
 /** Re-adds a seller profile to this browser's store (used after login on a new device). */
