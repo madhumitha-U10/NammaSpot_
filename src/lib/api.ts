@@ -355,6 +355,36 @@ export function addProduct(input: Omit<Product, "id" | "views" | "active">): Pro
   return product;
 }
 
+/** Attach / change a seller profile photo. */
+export function setSellerImage(sellerId: string, dataUrl: string) {
+  mutate((o) => {
+    o.sellerImages[sellerId] = dataUrl;
+  });
+}
+
+export function removeSellerImage(sellerId: string) {
+  mutate((o) => {
+    delete o.sellerImages[sellerId];
+  });
+}
+
+/** Sellers already registered with this WhatsApp number (duplicate guard). */
+export function sellerByPhone(phone: string): Seller | undefined {
+  const digits = phone.replace(/[^0-9]/g, "");
+  if (!digits) return undefined;
+  return allSellers().find((s) => s.whatsapp.replace(/[^0-9]/g, "") === digits);
+}
+
+/** Approved sellers in the same category, excluding the given one. */
+export function similarSellers(sellerId: string, limit = 3): Seller[] {
+  const seller = sellerById(sellerId);
+  if (!seller) return [];
+  const pool = approvedSellers().filter((s) => s.id !== seller.id);
+  const sameCategory = pool.filter((s) => s.categoryId === seller.categoryId);
+  const rest = pool.filter((s) => s.categoryId !== seller.categoryId && s.area === seller.area);
+  return [...sameCategory, ...rest].slice(0, limit);
+}
+
 export function setSellerStatus(sellerId: string, status: SellerStatus) {
   mutate((o) => {
     o.statusOverrides[sellerId] = status;
