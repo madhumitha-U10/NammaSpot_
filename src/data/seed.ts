@@ -36,6 +36,10 @@ export interface Seller {
   createdAt: string;
   deliversAcrossCity: boolean;
   tags: string[];
+  /** Optional profile photo (sheet `imageUrl` column or uploaded data URL). */
+  imageUrl?: string | undefined;
+  /** Optional wide cover photo (sheet `coverUrl` column). */
+  coverUrl?: string | undefined;
 }
 
 export interface Product {

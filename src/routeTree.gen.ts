@@ -15,6 +15,7 @@ import { Route as CategoriesRouteImport } from './routes/categories'
 import { Route as ExploreRouteImport } from './routes/explore'
 import { Route as FeaturedRouteImport } from './routes/featured'
 import { Route as NearMeRouteImport } from './routes/near-me'
+import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as StoriesRouteImport } from './routes/stories'
 import { Route as SellerSlugRouteImport } from './routes/seller.$slug'
 import { Route as SellerDashboardRouteImport } from './routes/seller.dashboard'
@@ -51,6 +52,11 @@ const NearMeRoute = NearMeRouteImport.update({
   path: '/near-me',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
+  id: '/sitemap.xml',
+  path: '/sitemap.xml',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const StoriesRoute = StoriesRouteImport.update({
   id: '/stories',
   path: '/stories',
@@ -84,6 +90,7 @@ export interface FileRoutesByFullPath {
   '/explore': typeof ExploreRoute
   '/featured': typeof FeaturedRoute
   '/near-me': typeof NearMeRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/stories': typeof StoriesRoute
   '/seller/$slug': typeof SellerSlugRoute
   '/seller/dashboard': typeof SellerDashboardRoute
@@ -97,6 +104,7 @@ export interface FileRoutesByTo {
   '/explore': typeof ExploreRoute
   '/featured': typeof FeaturedRoute
   '/near-me': typeof NearMeRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/stories': typeof StoriesRoute
   '/seller/$slug': typeof SellerSlugRoute
   '/seller/dashboard': typeof SellerDashboardRoute
@@ -111,6 +119,7 @@ export interface FileRoutesById {
   '/explore': typeof ExploreRoute
   '/featured': typeof FeaturedRoute
   '/near-me': typeof NearMeRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/stories': typeof StoriesRoute
   '/seller/$slug': typeof SellerSlugRoute
   '/seller/dashboard': typeof SellerDashboardRoute
@@ -126,6 +135,7 @@ export interface FileRouteTypes {
     | '/explore'
     | '/featured'
     | '/near-me'
+    | '/sitemap.xml'
     | '/stories'
     | '/seller/$slug'
     | '/seller/dashboard'
@@ -139,6 +149,7 @@ export interface FileRouteTypes {
     | '/explore'
     | '/featured'
     | '/near-me'
+    | '/sitemap.xml'
     | '/stories'
     | '/seller/$slug'
     | '/seller/dashboard'
@@ -152,6 +163,7 @@ export interface FileRouteTypes {
     | '/explore'
     | '/featured'
     | '/near-me'
+    | '/sitemap.xml'
     | '/stories'
     | '/seller/$slug'
     | '/seller/dashboard'
@@ -166,6 +178,7 @@ export interface RootRouteChildren {
   ExploreRoute: typeof ExploreRoute
   FeaturedRoute: typeof FeaturedRoute
   NearMeRoute: typeof NearMeRoute
+  SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   StoriesRoute: typeof StoriesRoute
   SellerSlugRoute: typeof SellerSlugRoute
   SellerDashboardRoute: typeof SellerDashboardRoute
@@ -217,6 +230,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof NearMeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/sitemap.xml': {
+      id: '/sitemap.xml'
+      path: '/sitemap.xml'
+      fullPath: '/sitemap.xml'
+      preLoaderRoute: typeof SitemapDotxmlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/stories': {
       id: '/stories'
       path: '/stories'
@@ -262,6 +282,7 @@ const rootRouteChildren: RootRouteChildren = {
   ExploreRoute: ExploreRoute,
   FeaturedRoute: FeaturedRoute,
   NearMeRoute: NearMeRoute,
+  SitemapDotxmlRoute: SitemapDotxmlRoute,
   StoriesRoute: StoriesRoute,
   SellerSlugRoute: SellerSlugRoute,
   SellerDashboardRoute: SellerDashboardRoute,

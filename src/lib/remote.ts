@@ -132,6 +132,8 @@ function mapSeller(row: SheetRow, categories: Category[]): Seller {
       .split(/[,|]/)
       .map((t) => t.trim())
       .filter(Boolean),
+    imageUrl: str(pick(row, "imageUrl", "image", "photo", "logo")) || undefined,
+    coverUrl: str(pick(row, "coverUrl", "cover", "bannerUrl")) || undefined,
   };
 }
 

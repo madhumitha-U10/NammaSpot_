@@ -52,6 +52,8 @@ interface Overlay {
   productImages: Record<string, string>;
   /** customerId -> uploaded profile picture (data URL). */
   customerAvatars: Record<string, string>;
+  /** sellerId -> uploaded profile photo (data URL). */
+  sellerImages: Record<string, string>;
 }
 
 const emptyOverlay: Overlay = {
@@ -64,6 +66,7 @@ const emptyOverlay: Overlay = {
   reviewApprovals: {},
   productImages: {},
   customerAvatars: {},
+  sellerImages: {},
 };
 
 function readOverlay(): Overlay {
@@ -101,10 +104,16 @@ function mirror(
 
 export function allSellers(): Seller[] {
   const o = readOverlay();
-  return [...remoteSnapshot().sellers, ...o.sellers].map((s) => ({
-    ...s,
-    status: o.statusOverrides[s.id] ?? s.status,
-  }));
+  const byId = new Map<string, Seller>();
+  for (const s of [...remoteSnapshot().sellers, ...o.sellers]) {
+    // Later entries (local overlay) win, so a record never appears twice.
+    byId.set(s.id, {
+      ...s,
+      status: o.statusOverrides[s.id] ?? s.status,
+      imageUrl: o.sellerImages[s.id] ?? s.imageUrl,
+    });
+  }
+  return [...byId.values()];
 }
 
 export function allProducts(): Product[] {
@@ -180,8 +189,36 @@ export interface SearchFilters {
   sort?: "featured" | "rating" | "price-low" | "newest" | undefined;
 }
 
+/**
+ * Tamil (and Tanglish) search terms mapped to the English words that actually
+ * appear in seller data, so "கேக்" / "maruthani" find the right makers.
+ */
+const TAMIL_SYNONYMS: [RegExp, string][] = [
+  [/கேக்|கேக|cake|கேக்ஸ்/i, "cake bakery baker dessert"],
+  [/மருதாணி|மெஹந்தி|maruthani|mehendi|henna/i, "mehendi henna bridal"],
+  [/மணப்பெண்|திருமண|bridal|kalyanam|கல்யாண/i, "bridal wedding makeup"],
+  [/ஒப்பனை|makeup|மேக்கப்/i, "makeup bridal"],
+  [/பூ|flower|மாலை/i, "flower garland decor"],
+  [/பரிசு|gift|கிஃப்ட்/i, "gift hamper gifting"],
+  [/புடவை|சேலை|saree|boutique|ஆடை/i, "saree boutique clothing fashion"],
+  [/ஓவியம்|painting|art|கலை/i, "art artist painting portrait"],
+  [/அலங்கார|decor|டெக்கார்/i, "decor handmade craft"],
+  [/பின்னல்|crochet|கிரோஷே/i, "crochet knit yarn"],
+  [/சென்னை/i, "chennai"],
+  [/உணவு|food|சமையல்|snack|தின்பண்ட/i, "food snacks bakes"],
+];
+
+function expandQuery(q: string): string[] {
+  const terms = [q];
+  for (const [re, english] of TAMIL_SYNONYMS) {
+    if (re.test(q)) terms.push(...english.split(" "));
+  }
+  return terms;
+}
+
 export function searchSellers(f: SearchFilters): Seller[] {
   const q = (f.q ?? "").trim().toLowerCase();
+  const terms = q ? expandQuery(q) : [];
   const products = allProducts();
 
   let list = approvedSellers().filter((s) => {
@@ -190,12 +227,14 @@ export function searchSellers(f: SearchFilters): Seller[] {
     if (f.minRating && s.rating < f.minRating) return false;
     if (f.maxPrice && s.priceFrom > f.maxPrice) return false;
     if (!q) return true;
+    const category = categoryById(s.categoryId);
     const hay = [
       s.businessName, s.ownerName, s.tagline, s.about, s.area, s.city,
-      s.instagram, s.tags.join(" "), categoryById(s.categoryId)?.name ?? "",
-      products.filter((p) => p.sellerId === s.id).map((p) => p.name).join(" "),
+      s.instagram, s.tags.join(" "),
+      category?.name ?? "", category?.tamilName ?? "", category?.slug ?? "",
+      products.filter((p) => p.sellerId === s.id).map((p) => `${p.name} ${p.description}`).join(" "),
     ].join(" ").toLowerCase();
-    return hay.includes(q);
+    return terms.some((t) => t && hay.includes(t));
   });
 
   switch (f.sort) {
@@ -252,10 +291,14 @@ export function createEnquiry(input: Omit<Enquiry, "id" | "status" | "createdAt"
 }
 
 export function registerSeller(
-  input: Pick<Seller, "businessName" | "ownerName" | "categoryId" | "area" | "city" | "instagram" | "whatsapp" | "email" | "tagline" | "about"> & { priceFrom: number },
+  input: Pick<Seller, "businessName" | "ownerName" | "categoryId" | "area" | "city" | "instagram" | "whatsapp" | "email" | "tagline" | "about"> & {
+    priceFrom: number;
+    imageUrl?: string | undefined;
+  },
 ): Seller {
+  const { imageUrl, ...rest } = input;
   const seller: Seller = {
-    ...input,
+    ...rest,
     id: id("s_"),
     slug: input.businessName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""),
     rating: 0,
@@ -266,7 +309,10 @@ export function registerSeller(
     deliversAcrossCity: true,
     tags: [],
   };
-  mutate((o) => o.sellers.unshift(seller));
+  mutate((o) => {
+    o.sellers.unshift(seller);
+    if (imageUrl) o.sellerImages[seller.id] = imageUrl;
+  });
   mirror("addSeller", {
     sellerId: seller.id,
     name: seller.businessName,
@@ -283,9 +329,10 @@ export function registerSeller(
     priceFrom: seller.priceFrom,
     status: seller.status,
     createdAt: seller.createdAt,
-    imageUrl: "",
+    // Only hosted URLs go to the sheet; uploaded photos stay in the local overlay.
+    imageUrl: imageUrl && /^https?:/i.test(imageUrl) ? imageUrl : "",
   });
-  return seller;
+  return { ...seller, imageUrl };
 }
 
 /** Re-adds a seller profile to this browser's store (used after login on a new device). */
@@ -314,6 +361,36 @@ export function addProduct(input: Omit<Product, "id" | "views" | "active">): Pro
     imageUrl: imageUrl && /^https?:/i.test(imageUrl) ? imageUrl : "",
   });
   return product;
+}
+
+/** Attach / change a seller profile photo. */
+export function setSellerImage(sellerId: string, dataUrl: string) {
+  mutate((o) => {
+    o.sellerImages[sellerId] = dataUrl;
+  });
+}
+
+export function removeSellerImage(sellerId: string) {
+  mutate((o) => {
+    delete o.sellerImages[sellerId];
+  });
+}
+
+/** Sellers already registered with this WhatsApp number (duplicate guard). */
+export function sellerByPhone(phone: string): Seller | undefined {
+  const digits = phone.replace(/[^0-9]/g, "");
+  if (!digits) return undefined;
+  return allSellers().find((s) => s.whatsapp.replace(/[^0-9]/g, "") === digits);
+}
+
+/** Approved sellers in the same category, excluding the given one. */
+export function similarSellers(sellerId: string, limit = 3): Seller[] {
+  const seller = sellerById(sellerId);
+  if (!seller) return [];
+  const pool = approvedSellers().filter((s) => s.id !== seller.id);
+  const sameCategory = pool.filter((s) => s.categoryId === seller.categoryId);
+  const rest = pool.filter((s) => s.categoryId !== seller.categoryId && s.area === seller.area);
+  return [...sameCategory, ...rest].slice(0, limit);
 }
 
 export function setSellerStatus(sellerId: string, status: SellerStatus) {
