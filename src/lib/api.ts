@@ -189,8 +189,36 @@ export interface SearchFilters {
   sort?: "featured" | "rating" | "price-low" | "newest" | undefined;
 }
 
+/**
+ * Tamil (and Tanglish) search terms mapped to the English words that actually
+ * appear in seller data, so "கேக்" / "maruthani" find the right makers.
+ */
+const TAMIL_SYNONYMS: [RegExp, string][] = [
+  [/கேக்|கேக|cake|கேக்ஸ்/i, "cake bakery baker dessert"],
+  [/மருதாணி|மெஹந்தி|maruthani|mehendi|henna/i, "mehendi henna bridal"],
+  [/மணப்பெண்|திருமண|bridal|kalyanam|கல்யாண/i, "bridal wedding makeup"],
+  [/ஒப்பனை|makeup|மேக்கப்/i, "makeup bridal"],
+  [/பூ|flower|மாலை/i, "flower garland decor"],
+  [/பரிசு|gift|கிஃப்ட்/i, "gift hamper gifting"],
+  [/புடவை|சேலை|saree|boutique|ஆடை/i, "saree boutique clothing fashion"],
+  [/ஓவியம்|painting|art|கலை/i, "art artist painting portrait"],
+  [/அலங்கார|decor|டெக்கார்/i, "decor handmade craft"],
+  [/பின்னல்|crochet|கிரோஷே/i, "crochet knit yarn"],
+  [/சென்னை/i, "chennai"],
+  [/உணவு|food|சமையல்|snack|தின்பண்ட/i, "food snacks bakes"],
+];
+
+function expandQuery(q: string): string[] {
+  const terms = [q];
+  for (const [re, english] of TAMIL_SYNONYMS) {
+    if (re.test(q)) terms.push(...english.split(" "));
+  }
+  return terms;
+}
+
 export function searchSellers(f: SearchFilters): Seller[] {
   const q = (f.q ?? "").trim().toLowerCase();
+  const terms = q ? expandQuery(q) : [];
   const products = allProducts();
 
   let list = approvedSellers().filter((s) => {
@@ -199,12 +227,14 @@ export function searchSellers(f: SearchFilters): Seller[] {
     if (f.minRating && s.rating < f.minRating) return false;
     if (f.maxPrice && s.priceFrom > f.maxPrice) return false;
     if (!q) return true;
+    const category = categoryById(s.categoryId);
     const hay = [
       s.businessName, s.ownerName, s.tagline, s.about, s.area, s.city,
-      s.instagram, s.tags.join(" "), categoryById(s.categoryId)?.name ?? "",
-      products.filter((p) => p.sellerId === s.id).map((p) => p.name).join(" "),
+      s.instagram, s.tags.join(" "),
+      category?.name ?? "", category?.tamilName ?? "", category?.slug ?? "",
+      products.filter((p) => p.sellerId === s.id).map((p) => `${p.name} ${p.description}`).join(" "),
     ].join(" ").toLowerCase();
-    return hay.includes(q);
+    return terms.some((t) => t && hay.includes(t));
   });
 
   switch (f.sort) {
