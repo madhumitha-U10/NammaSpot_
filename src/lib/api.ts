@@ -52,6 +52,8 @@ interface Overlay {
   productImages: Record<string, string>;
   /** customerId -> uploaded profile picture (data URL). */
   customerAvatars: Record<string, string>;
+  /** sellerId -> uploaded profile photo (data URL). */
+  sellerImages: Record<string, string>;
 }
 
 const emptyOverlay: Overlay = {
@@ -64,6 +66,7 @@ const emptyOverlay: Overlay = {
   reviewApprovals: {},
   productImages: {},
   customerAvatars: {},
+  sellerImages: {},
 };
 
 function readOverlay(): Overlay {
